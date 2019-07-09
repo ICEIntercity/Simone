@@ -10,7 +10,8 @@ import logging
 import whois
 import datetime
 import config
-
+import urllib
+import sys
 
 # Refer to included word document for full description of the following rules
 
@@ -61,10 +62,11 @@ def check_at_character(link: str) -> float:
 
 # Some redirects might be visible in parameters - make sure that "//" or "www" only appear once
 def check_http_www(link: str) -> float:
-    search_http = link.rfind("//")
+    search_slash = link.rfind("//")
     search_www = link.rfind("www.")
+    search_http = link.rfind("http")
 
-    if search_http > 7 or search_www > 11:
+    if search_slash > 7 or search_www > 11 or search_http > 4:
         return -1
     else:
         return 1
@@ -106,9 +108,9 @@ def check_ssl(link: str) -> float:
     log = logging.getLogger('simone_core')
     hostname = None
 
-    try:
-        hostname = urlparse.urlparse(link).hostname
-    except ValueError:
+    hostname = urlparse.urlparse(link).hostname
+
+    if hostname is None:
         log.warning("SSL check failed, invalid  URL")
         return -1
 
@@ -196,18 +198,27 @@ def check_html(link: str) -> dict:
         "favicon": -1,
         "ext_res": 0,
         "ext_anchor": 0,
+        "ext_script": 0,
         "status_change": -1,
     }
     link_parsed = urlparse.urlparse(link)
     if link_parsed.hostname is None:
         raise RuntimeError("HTML check failed, invalid URL supplied: " + link)
 
+    page = None
     host = link_parsed.hostname  # Placeholder value
     try:
-        page = urlopen(link)
+        req = urllib.request.Request(link, data=None, headers={
+            "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+        })
+        page = urllib.request.urlopen(req)
         host = urlparse.urlparse(page.url).hostname
-    except URLError:
-        raise RuntimeError("Failed to retrieve website for " + link)
+
+    except urllib.error.HTTPError as e:  # Exotic HTTP errors, Hackers can be sneaky...
+        page = e.read().decode()
+
+    except urllib.error.URLError:
+        log.warning("Failed to open site.")
 
     soup = BeautifulSoup(page, features="html.parser")
     icon = soup.find("link", rel="shortcut icon")
@@ -215,41 +226,117 @@ def check_html(link: str) -> dict:
     icon_host = urlparse.urlparse(icon_link).hostname
 
     # if favicon is hosted on the same server
-    if icon_host is None or icon_host == host:
+    if (icon_host is None and icon_link.find("data:") == -1) or icon_host == host:
         results.update(favicon=1)
 
-    resource_href = {host: 0}  # Initializing the value for locally-hosted resources without url
-    anchor_href = {host: 0}  # Ditto, but limited to anchors and links ("<a>" tag)
+    resource_href = {host: 0, "data": 0}  # Initializing the value for locally-hosted resources without url
+    anchor_href = {host: 0, "data": 0}  # Ditto, but limited to anchors and links ("<a>" tag)
+    script_href = {host: 0, "data": 0}  # Ditto, but for <link>, <meta> and <script>
 
     # Get the % of externally requested resources for each category (phishing sites often use external resources to blend in)
     # This is probably going to be painfully slow...
     # TODO: Try to find a way to improve/fix this
     href_tags = soup.find_all(href=True)
+    src_tags = soup.find_all(src=True)
     for tag in href_tags:
+
+        # embedding data directly into phishing sites is the current equivalent of using external resources
+        if tag['href'].find("data:") is not -1:
+            print(tag)
+            if tag.name == "a":
+                anchor_href["data"] += 1
+            else:
+                if tag.name == "meta" or tag.name == "link" or tag.name == "script":
+                    script_href["data"] += 1
+                else:
+                    resource_href["data"] += 1
+
+            continue
+
         tag_url = urlparse.urlparse(tag['href'])
 
         if tag_url.hostname is not None:
-            if tag_url.hostname not in resource_href:
-                if tag.name == "a":
+            # print(tag)
+            if tag.name == "a":
+                if tag_url.hostname not in anchor_href:
                     anchor_href[tag_url.hostname] = 1
                 else:
-                    resource_href[tag_url.hostname] = 1
-            else:
-                if tag.name == "a":
                     anchor_href[tag_url.hostname] += 1
+            else:
+                if tag.name == "meta" or tag.name == "link" or tag.name == "script":
+                    if tag_url.hostname not in script_href:
+                        script_href[tag_url.hostname] = 1
+                    else:
+                        script_href[tag_url.hostname] += 1
                 else:
-                    resource_href[tag_url.hostname] += 1
+                    if tag_url.hostname not in resource_href:
+                        resource_href[tag_url.hostname] = 1
+                    else:
+                        resource_href[tag_url.hostname] += 1
         else:
             if tag.name == "a":
                 anchor_href[host] += 1
             else:
-                resource_href[host] += 1
+                if tag.name == "meta" or tag.name == "link" or tag.name == "script":
+                    script_href[host] += 1
+                else:
+                    resource_href[host] += 1
+
+    src_tags = soup.find_all(src=True)
+    for src_tag in src_tags:
+
+        # embedding data directly into phishing sites is the current equivalent of using external resources
+        if src_tag['src'].find("data:") is not -1:
+            if src_tag.name == "a":
+                anchor_href["data"] += 1
+            else:
+                if src_tag.name == "meta" or src_tag.name == "link" or src_tag.name == "script":
+                    script_href["data"] += 1
+                else:
+                    resource_href["data"] += 1
+
+            continue
+
+        tag_url = urlparse.urlparse(src_tag['src'])
+
+        if tag_url.hostname is not None:
+            # print(tag)
+            if src_tag.name == "a":
+                if tag_url.hostname not in anchor_href:
+                    anchor_href[tag_url.hostname] = 1
+                else:
+                    anchor_href[tag_url.hostname] += 1
+            else:
+                if src_tag.name == "meta" or src_tag.name == "link" or src_tag.name == "script":
+                    if tag_url.hostname not in script_href:
+                        script_href[tag_url.hostname] = 1
+                    else:
+                        script_href[tag_url.hostname] += 1
+                else:
+                    if tag_url.hostname not in resource_href:
+                        resource_href[tag_url.hostname] = 1
+                    else:
+                        resource_href[tag_url.hostname] += 1
+        else:
+            if src_tag.name == "a":
+                anchor_href[host] += 1
+            else:
+                if src_tag.name == "meta" or src_tag.name == "link" or src_tag.name == "script":
+                    script_href[host] += 1
+                else:
+                    resource_href[host] += 1
 
     total_res = sum(resource_href.values())
     total_a = sum(anchor_href.values())
+    total_script = sum(script_href.values())
 
-    ext_request_percentage = 1 - (resource_href[host] / total_res)
-    ext_anchor_percentage = 1 - (anchor_href[host] / total_a)
+    print(total_res)
+    print(total_script)
+    print(total_a)
+
+    ext_request_percentage = 1 - (resource_href[host] / total_res) if total_res != 0 else 0
+    ext_anchor_percentage = 1 - (anchor_href[host] / total_a) if total_a != 0 else 0
+    ext_script_percentage = 1 - (script_href[host] / total_script) if total_script != 0 else 0
 
     if ext_request_percentage < 0.25:
         results.update(ext_res=1)
@@ -260,8 +347,22 @@ def check_html(link: str) -> dict:
     if ext_anchor_percentage < 0.31:
         results.update(ext_anchor=1)
     else:
-        if ext_anchor_percentage > 0.6:
+        if ext_anchor_percentage > 0.60:
             results.update(ext_anchor=-1)
+
+    if ext_script_percentage < 0.17:
+        results.update(ext_script=1)
+    else:
+        if ext_script_percentage > 0.80:
+            results.update(ext_script=-1)
+
+    # print(ext_script_percentage)
+    # print(ext_request_percentage)
+    # print(ext_anchor_percentage)
+
+    # print(resource_href)
+    # print(anchor_href)
+    # print(script_href)
 
     # Probably not relevant anymore? (Check for changes of the status bar)
     body = soup.__repr__()
@@ -281,4 +382,6 @@ def check_fsh(link: str):
 # cases, it is virtually impossible to detect
 def check_mail_handlers(link: str):
     return 1
+
+
 
