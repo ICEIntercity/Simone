@@ -12,6 +12,8 @@ import datetime
 import config
 import urllib
 import sys
+import requests
+import json
 
 # Refer to included word document for full description of the following rules
 
@@ -148,11 +150,12 @@ def check_whois(link: str) -> dict:
         "record_exists": -1,
         "domain_age": -1,
         "domain_expiry": 1,
+        "public_identity": 0,
     }
 
-    try:
-        host = urlparse.urlparse(link)
-    except ValueError:
+    host = urlparse.urlparse(link)
+
+    if host.hostname is None:
         raise RuntimeError("WHOIS check failed, invalid URL")
 
     whois_info = whois.whois(host.hostname)
@@ -180,7 +183,12 @@ def check_whois(link: str) -> dict:
     if domain_age > 180:  # Domain older than 6 months, to comply with dataset requirements
         results.update(domain_age=1)
 
-    # TODO: Finish
+    # This serves as a replacement for the "containing org name", as that information is no longer easily accessible.
+    if whois_info.org.lower().find("mask") == -1 and whois_info.org.lower().find("redacted") == -1:
+        results.update(public_identity=1)
+
+    if whois_info.name.lower().find("mask") == -1 and whois_info.name.lower().find("redacted") == -1:
+        results.update(public_identity=1)
 
     return results
 
@@ -200,6 +208,7 @@ def check_html(link: str) -> dict:
         "ext_anchor": 0,
         "ext_script": 0,
         "status_change": -1,
+        "iframe": 1,
     }
     link_parsed = urlparse.urlparse(link)
     if link_parsed.hostname is None:
@@ -238,6 +247,7 @@ def check_html(link: str) -> dict:
     # TODO: Try to find a way to improve/fix this
     href_tags = soup.find_all(href=True)
     src_tags = soup.find_all(src=True)
+
     for tag in href_tags:
 
         # embedding data directly into phishing sites is the current equivalent of using external resources
@@ -330,9 +340,9 @@ def check_html(link: str) -> dict:
     total_a = sum(anchor_href.values())
     total_script = sum(script_href.values())
 
-    print(total_res)
-    print(total_script)
-    print(total_a)
+    # print(total_res)
+    # print(total_script)
+    # print(total_a)
 
     ext_request_percentage = 1 - (resource_href[host] / total_res) if total_res != 0 else 0
     ext_anchor_percentage = 1 - (anchor_href[host] / total_a) if total_a != 0 else 0
@@ -355,6 +365,10 @@ def check_html(link: str) -> dict:
     else:
         if ext_script_percentage > 0.80:
             results.update(ext_script=-1)
+
+    iframe = soup.find('iframe')
+    if iframe is not None:
+        results.update(iframe=-1)
 
     # print(ext_script_percentage)
     # print(ext_request_percentage)
@@ -384,4 +398,54 @@ def check_mail_handlers(link: str):
     return 1
 
 
+# Invalid DNS records are nowadays extemely rare. Function stub preserved for dataset compatibility
+def check_dns(link: str):
+    return 1
 
+
+# Check the number of redirects
+def check_redirects(link: str) -> float:
+    log = logging.getLogger('simone_core')
+    parsed = urlparse.urlparse(link)
+    if parsed.netloc is None:
+        log.warning('Redirect check failed, invalid URL')
+        return 0
+
+    redirect_count = 0
+
+    for i in range(0, 4):
+        r = requests.head(link)
+        if 300 < r.status_code < 400:
+            loc = r.headers['location']
+            plink = urlparse.urlparse(loc)
+
+            if plink.netloc is '':
+                new_link = parsed._replace(path=plink.path)
+                link = urlparse.urlunparse(new_link)  # Just WTF
+
+            else:
+                link = loc
+
+            redirect_count += 1
+
+    if redirect_count <= 1:
+        return 1
+    else:
+        return 0 if redirect_count < 4 else -1
+
+
+def check_page_rank(link: str) -> float:
+    endpoint = config.analysis.get("pagerankAPIendpoint")
+    api_key = config.analysis.get("pagerankAPIkey")
+    domain = urlparse.urlparse(link).netloc
+    payload = {'domains[0]': {domain}}
+
+    print(api_key)
+
+    r = requests.get(endpoint, params=payload, headers={'API-OPR': api_key})
+    print(r.url)
+    result = r.json()
+
+    print(result)
+
+    return 0
