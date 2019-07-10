@@ -434,18 +434,25 @@ def check_redirects(link: str) -> float:
         return 0 if redirect_count < 4 else -1
 
 
-def check_page_rank(link: str) -> float:
+def check_page_rank(link: str):
+
     endpoint = config.analysis.get("pagerankAPIendpoint")
     api_key = config.analysis.get("pagerankAPIkey")
     domain = urlparse.urlparse(link).netloc
     payload = {'domains[0]': {domain}}
 
-    print(api_key)
-
     r = requests.get(endpoint, params=payload, headers={'API-OPR': api_key})
     print(r.url)
     result = r.json()
 
-    print(result)
+    if result['status_code'] == 200:
+        page_rank = result['response'][0]['page_rank_decimal']
 
-    return 0
+        if page_rank < 3:
+            return -1
+        else:
+            if page_rank < 6:
+                return 0
+            else:
+                return 1
+
