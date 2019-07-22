@@ -14,8 +14,11 @@ import urllib
 import sys
 import requests
 import json
+import xml.etree.ElementTree as xml
+
 
 # Refer to included word document for full description of the following rules
+# Developing a new dataset may be necessary in the future.
 
 
 # If an IP address is contained within the link, it is almost certainly malicious
@@ -38,28 +41,762 @@ def check_url_length(link: str) -> float:
             return -1
 
 
-# Check for redirect - immediate redirect(s) will be marked as suspicious
-# TODO: Find a better way to detect public shorteners only, as many businesses use their own internal redirects
+# Check for URL Shortener use
 def check_short_url(link: str) -> float:
-    parsed = urlparse.urlparse(link)
-    http = httpclient.HTTPConnection(parsed.netloc)
-    http.request('HEAD', parsed.path)
-    response = http.getresponse()
+    # This thing is *long*. Go to line 794 for continuation.
+    shortener_list = [
+            "0rz.tw/",
 
-    if response.status // 100 == 3 and response.getheader('Location') != link:
-        return -1
-    else:
-        return 1
+            "1link.in/",
 
+            "1url.com/",
 
-# Some browsers ignore url elements before @ sign
-# @deprecated?
-def check_at_character(link: str) -> float:
-    regex = re.compile("@")
-    if re.search(regex, link) is not None:
-        return -1
-    else:
-        return 1
+            "2.gp/",
+
+            "2big.at/",
+
+            "2tu.us/",
+
+            "3.ly/",
+
+            "307.to/",
+
+            "4ms.me/",
+
+            "4sq.com/",
+
+            "4url.cc/",
+
+            "6url.com/",
+
+            "7.ly/",
+
+            "7vd.cn/",
+
+            "a.gg/",
+
+            "a.nf/",
+
+            "aa.cx/",
+
+            "abcurl.net/",
+
+            "ad.vu/",
+
+            "adcraft.co/",
+
+            "adcrun.ch/",
+
+            "adf.ly/",
+
+            "adjix.com/",
+
+            "afx.cc/",
+
+            "aka.gr/",
+
+            "all.fuseurl.com/",
+
+            "alturl.com/",
+
+            "amzn.to/",
+
+            "ar.gy/",
+
+            "arst.ch/",
+
+            "atu.ca/",
+
+            "azc.cc/",
+
+            "b23.ru/",
+
+            "b2l.me/",
+
+            "bacn.me/",
+
+            "bc.vc/",
+
+            "bcool.bz/",
+
+            "binged.it/",
+
+            "bit.do/",
+
+            "bit.ly/",
+
+            "bitly.com/",
+
+            "bizj.us/",
+
+            "bloat.me/",
+
+            "bravo.ly/",
+
+            "bsa.ly/",
+
+            "budurl.com/",
+
+            "buzurl.com/",
+
+            "canurl.com/",
+
+            "chilp.it/",
+
+            "chzb.gr/",
+
+            "cl.lk/",
+
+            "cl.ly/",
+
+            "clck.ru/",
+
+            "cli.gs/",
+
+            "cliccami.info/",
+
+            "clickthru.ca/",
+
+            "clop.in/",
+
+            "conta.cc/",
+
+           "cort.as/",
+
+            "cot.ag/",
+
+            "crisco.com/",
+
+            "crks.me/",
+
+            "ctvr.us/",
+
+            "cur.ly/",
+
+            "cutt.us/",
+
+            "dai.ly/",
+
+            "db.tt/",
+
+            "decenturl.com/",
+
+            "dfl8.me/",
+
+            "dft.ba/",
+
+            "digbig.com/",
+
+            "digg.com/",
+
+            "disq.us/",
+
+            "dld.bz/",
+
+            "dlvr.it/",
+
+            "do.my/",
+
+            "doiop.com/",
+
+            "dopen.us/",
+
+            "easyuri.com/",
+
+            "easyurl.net/",
+
+            "eepurl.com/",
+
+            "eweri.com/",
+
+            "fa.by/",
+
+            "fav.me/",
+
+            "fb.me/",
+
+            "fbshare.me/",
+
+            "ff.im/",
+
+            "fff.to/",
+
+            "filoops.info/",
+
+            "fire.to/",
+
+            "firsturl.de/",
+
+            "firsturl.net/",
+
+            "flic.kr/",
+
+            "flq.us/",
+
+            "fly2.ws/",
+
+            "fon.gs/",
+
+            "freak.to/",
+
+            "fuseurl.com/",
+
+            "fuzzy.to/",
+
+            "fwd4.me/",
+
+            "fwib.net/",
+
+            "g.ro.lt/",
+
+            "gizmo.do/",
+
+            "gl.am/",
+
+            "go.9nl.com/",
+
+            "go.ign.com/",
+
+            "go.usa.gov/",
+
+            "goo.gl/",
+
+            "goshrink.com/",
+
+            "gurl.es/",
+
+            "hex.io/",
+
+            "hiderefer.com/",
+
+            "hmm.ph/",
+
+            "href.in/",
+
+            "hsblinks.com/",
+
+            "htxt.it/",
+
+            "huff.to/",
+
+            "hulu.com/",
+
+            "hurl.me/",
+
+            "hurl.ws/",
+
+            "icanhaz.com/",
+
+            "idek.net/",
+
+            "ilix.in/",
+
+            "is.gd/",
+
+            "its.my/",
+
+            "ity.im/",
+
+            "ix.lt/",
+
+            "j.mp/",
+
+            "jijr.com/",
+
+            "kl.am/",
+
+            "klck.me/",
+
+            "korta.nu/",
+
+            "krunchd.com/",
+
+            "l9k.net/",
+
+            "lat.ms/",
+
+            "lemde.fr/",
+
+            "liip.to/",
+
+            "liltext.com/",
+
+            "linkbee.com/",
+
+            "linkbun.ch/",
+
+            "liurl.cn/",
+
+            "ln-s.net/",
+
+            "ln-s.ru/",
+
+            "lnk.gd/",
+
+            "lnk.ms/",
+
+            "lnkd.in/",
+
+            "lnkurl.com/",
+
+            "lru.jp/",
+
+            "lt.tl/",
+
+            "lurl.no/",
+
+            "macte.ch/",
+
+            "mash.to/",
+
+            "merky.de/",
+
+            "migre.me/",
+
+            "miniurl.com/",
+
+            "minurl.fr/",
+
+            "mke.me/",
+
+            "moby.to/",
+
+            "moourl.com/",
+
+            "mrte.ch/",
+
+            "myloc.me/",
+
+            "myurl.in/",
+
+            "n.pr/",
+
+            "nbc.co/",
+
+            "nblo.gs/",
+
+            "nn.nf/",
+
+            "not.my/",
+
+            "notlong.com/",
+
+            "nsfw.in/",
+
+            "nutshellurl.com/",
+
+            "nxy.in/",
+
+            "nyti.ms/",
+
+            "o-x.fr/",
+
+            "oc1.us/",
+
+            "om.ly/",
+
+            "omf.gd/",
+
+            "omoikane.net/",
+
+            "on.cnn.com/",
+
+            "on.mktw.net/",
+
+            "onforb.es/",
+
+            "orz.se/",
+
+            "ow.ly/",
+
+            "ping.fm/",
+
+            "pli.gs/",
+
+            "pnt.me/",
+
+            "politi.co/",
+
+            "post.ly/",
+
+            "pp.gg/",
+
+            "prettylinkpro.com/",
+
+            "profile.to/",
+
+            "ptiturl.com/",
+
+            "pub.vitrue.com/",
+
+            "q.gs/",
+
+            "qlnk.net/",
+
+            "qr.ae/",
+
+            "qr.net/",
+
+            "qte.me/",
+
+            "qu.tc/",
+
+            "qy.fi/",
+
+            "r.im/",
+
+            "rb6.me/",
+
+            "read.bi/",
+
+            "readthis.ca/",
+
+            "reallytinyurl.com/",
+
+            "redir.ec/",
+
+            "redirects.ca/",
+
+            "redirx.com/",
+
+            "retwt.me/",
+
+            "ri.ms/",
+
+            "rickroll.it/",
+
+            "riz.gd/",
+
+            "rt.nu/",
+
+            "ru.ly/",
+
+            "rubyurl.com/",
+
+            "rurl.org/",
+
+            "rww.tw/",
+
+            "s4c.in/",
+
+            "s7y.us/",
+
+            "safe.mn/",
+
+            "sameurl.com/",
+
+            "scrnch.me/",
+
+            "sdut.us/",
+
+            "shar.es/",
+
+            "shink.de/",
+
+            "shorl.com/",
+
+            "short.ie/",
+
+            "short.to/",
+
+            "shortlinks.co.uk/",
+
+            "shorturl.com/",
+
+            "shout.to/",
+
+            "show.my/",
+
+            "shrinkify.com/",
+
+            "shrinkr.com/",
+
+            "shrt.fr/",
+
+            "shrt.st/",
+
+            "shrten.com/",
+
+            "shrunkin.com/",
+
+            "simurl.com/",
+
+            "slate.me/",
+
+            "smallr.com/",
+
+            "smsh.me/",
+
+            "smurl.name/",
+
+            "sn.im/",
+
+            "snipr.com/",
+
+            "snipurl.com/",
+
+            "snurl.com/",
+
+            "sp2.ro/",
+
+            "spedr.com/",
+
+            "srnk.net/",
+
+            "srs.li/",
+
+            "starturl.com/",
+
+            "su.pr/",
+
+            "surl.co.uk/",
+
+            "surl.hu/",
+
+            "t.cn/",
+
+            "t.co/",
+
+            "t.lh.com/",
+
+            "ta.gd/",
+
+            "tbd.ly/",
+
+            "tcrn.ch/",
+
+            "tgr.me/",
+
+            "tgr.ph/",
+
+            "tighturl.com/",
+
+            "tiniuri.com/",
+
+            "tiny.cc/",
+
+            "tiny.ly/",
+
+            "tiny.pl/",
+
+            "tinylink.in/",
+
+            "tinyuri.ca/",
+
+            "tinyurl.com/",
+
+            "tk./",
+
+            "tl.gd/",
+
+            "tmi.me/",
+
+            "tnij.org/",
+
+            "tnw.to/",
+
+            "tny.com/",
+
+            "to./",
+
+            "to.ly/",
+
+            "togoto.us/",
+
+            "totc.us/",
+
+            "toysr.us/",
+
+            "tpm.ly/",
+
+            "tr.im/",
+
+            "tra.kz/",
+
+            "trunc.it/",
+
+            "tweez.me/",
+
+            "twhub.com/",
+
+            "twirl.at/",
+
+            "twitclicks.com/",
+
+            "twitterurl.net/",
+
+            "twitterurl.org/",
+
+            "twitthis.com/",
+
+            "twiturl.de/",
+
+            "twurl.cc/",
+
+            "twurl.nl/",
+
+            "u.bb/",
+
+            "u.mavrev.com/",
+
+            "u.nu/",
+
+            "u.to/",
+
+            "u76.org/",
+
+            "ub0.cc/",
+
+            "ulu.lu/",
+
+            "updating.me/",
+
+            "ur1.ca/",
+
+            "url.az/",
+
+            "url.co.uk/",
+
+            "url.ie/",
+
+            "url360.me/",
+
+            "url4.eu/",
+
+            "urlborg.com/",
+
+            "urlbrief.com/",
+
+            "urlcover.com/",
+
+            "urlcut.com/",
+
+            "urlenco.de/",
+
+            "urli.nl/",
+
+            "urls.im/",
+
+            "urlshorteningservicefortwitter.com/",
+
+            "urlx.ie/",
+
+            "urlzen.com/",
+
+            "usat.ly/",
+
+            "use.my/",
+
+            "v.gd/",
+
+            "vb.ly/",
+
+            "vgn.am/",
+
+            "viralurl.biz/",
+
+            "viralurl.com/",
+
+            "virl.ws/",
+
+            "vl.am/",
+
+            "vm.lc/",
+
+            "vur.me/",
+
+            "vurl.bz/",
+
+            "vzturl.com/",
+
+            "w55.de/",
+
+            "wapo.st/",
+
+            "wapurl.co.uk/",
+
+            "wipi.es/",
+
+            "wp.me/",
+
+            "x.co/",
+
+            "x.vu/",
+
+            "xr.com/",
+
+            "xrl.in/",
+
+            "xrl.us/",
+
+            "xurl.es/",
+
+            "xurl.jp/",
+
+            "y.ahoo.it/",
+
+            "yatuc.com/",
+
+            "ye.pe/",
+
+            "yep.it/",
+
+            "yfrog.com/",
+
+            "yhoo.it/",
+
+            "yiyd.com/",
+
+            "yourls.org/",
+
+            "youtu.be/",
+
+            "yuarel.com/",
+
+            "z0p.de/",
+
+            "zi.ma/",
+
+            "zi.mu/",
+
+            "zipmyurl.com/",
+
+            "zud.me/",
+
+            "zurl.ws/",
+
+            "zz.gd/",
+
+            "zzang.kr/",
+
+            "›.ws/",
+
+            "✩.ws/",
+
+            "✿.ws/",
+
+            "❥.ws/",
+
+            "➔.ws/",
+
+            "➞.ws/",
+
+            "➡.ws/",
+
+            "➨.ws/",
+
+            "➯.ws/",
+
+            "➹.ws/",
+
+            "➽.ws/",
+           ]
+
+    for shortener in shortener_list:
+        if link.find(shortener) != -1:
+            return -1
+        else:
+            return 1
 
 
 # Some redirects might be visible in parameters - make sure that "//" or "www" only appear once
@@ -80,6 +817,7 @@ def check_domain_str(link: str) -> dict:
     domain_find = re.search(domain_regex, link)
 
     results = {
+        "at_result": 1,
         "dot_result": 0,
         "dash_result": -1,
         "http_result": 1,
@@ -87,8 +825,8 @@ def check_domain_str(link: str) -> dict:
 
     if domain_find is not None:
         domain = domain_find.group(1)
-        if domain.count("-") is -1:
-            results.update(dash_result=0)
+        if domain.count("-") is 0:
+            results.update(dash_result=1)
 
         dot_count = domain.count(".")
 
@@ -101,6 +839,9 @@ def check_domain_str(link: str) -> dict:
 
         if domain.count("http") is not 0:
             results.update(http_result=-1)
+
+        if domain.count("@") is not 0:
+            results.update(at_result=-1)
 
     return results
 
@@ -183,19 +924,12 @@ def check_whois(link: str) -> dict:
     if domain_age > 180:  # Domain older than 6 months, to comply with dataset requirements
         results.update(domain_age=1)
 
-    # This serves as a replacement for the "containing org name", as that information is no longer easily accessible.
-    if whois_info.org.lower().find("mask") == -1 and whois_info.org.lower().find("redacted") == -1:
-        results.update(public_identity=1)
-
-    if whois_info.name.lower().find("mask") == -1 and whois_info.name.lower().find("redacted") == -1:
-        results.update(public_identity=1)
+    if whois_info.org is not None and whois_info.name is not None:
+        # This serves as a replacement for the "containing org name", as that information is no longer easily accessible.
+        if whois_info.org.lower().find("mask") == -1 and whois_info.org.lower().find("redacted") == -1:
+            results.update(public_identity=1)
 
     return results
-
-
-# Port scanning is not allowed by local security rules. May change in the future
-def check_ports(link: str) -> float:
-    return 1
 
 
 # Several of the considered parameters are based on the HTML content of a phishing site
@@ -203,7 +937,7 @@ def check_ports(link: str) -> float:
 def check_html(link: str) -> dict:
     log = logging.getLogger("simone_core")
     results = {
-        "favicon": -1,
+        "favicon": 1,
         "ext_res": 0,
         "ext_anchor": 0,
         "ext_script": 0,
@@ -231,12 +965,14 @@ def check_html(link: str) -> dict:
 
     soup = BeautifulSoup(page, features="html.parser")
     icon = soup.find("link", rel="shortcut icon")
-    icon_link = icon['href']
-    icon_host = urlparse.urlparse(icon_link).hostname
 
-    # if favicon is hosted on the same server
-    if (icon_host is None and icon_link.find("data:") == -1) or icon_host == host:
-        results.update(favicon=1)
+    if icon is not None:
+        icon_link = icon['href']
+        icon_host = urlparse.urlparse(icon_link).hostname
+
+        # if favicon is hosted on the same server
+        if (icon_host is None or icon_link.find("data:") != -1) and icon_host != host:
+            results.update(favicon=-1)
 
     resource_href = {host: 0, "data": 0}  # Initializing the value for locally-hosted resources without url
     anchor_href = {host: 0, "data": 0}  # Ditto, but limited to anchors and links ("<a>" tag)
@@ -386,23 +1122,6 @@ def check_html(link: str) -> dict:
     return results
 
 
-# Checking Server Form Handlers heading to blank or external sites. Since this is no longer valid as per W3C standards,
-# this check has been rendered moot.
-def check_fsh(link: str):
-    return 1
-
-
-# Sending form information directly to e-mail is also an indication of phishing. This is also done server-side in most
-# cases, it is virtually impossible to detect
-def check_mail_handlers(link: str):
-    return 1
-
-
-# Invalid DNS records are nowadays extemely rare. Function stub preserved for dataset compatibility
-def check_dns(link: str):
-    return 1
-
-
 # Check the number of redirects
 def check_redirects(link: str) -> float:
     log = logging.getLogger('simone_core')
@@ -434,6 +1153,8 @@ def check_redirects(link: str) -> float:
         return 0 if redirect_count < 4 else -1
 
 
+# Google's old PageRank API is no longer a thing, sadly. Some of the constants have been altered to reflect the new
+# scoring API used (3 is a neutral value)
 def check_page_rank(link: str):
 
     endpoint = config.analysis.get("pagerankAPIendpoint")
@@ -442,11 +1163,14 @@ def check_page_rank(link: str):
     payload = {'domains[0]': {domain}}
 
     r = requests.get(endpoint, params=payload, headers={'API-OPR': api_key})
-    print(r.url)
+    # print(r.url)
     result = r.json()
 
     if result['status_code'] == 200:
         page_rank = result['response'][0]['page_rank_decimal']
+
+        if isinstance(page_rank, str):
+            return -1
 
         if page_rank < 3:
             return -1
@@ -455,4 +1179,35 @@ def check_page_rank(link: str):
                 return 0
             else:
                 return 1
+
+
+# PhishTank has a handy API that can be used to check reputation
+# What am I doing with my life
+def check_phishtank_reputation(link: str):
+
+    endpoint = config.analysis.get("phishtankAPIendpoint")
+    api_key = config.analysis.get("phishtankAPIkey")
+    payload = {
+        'url': link,
+        'format': "xml",  # Only XML API seems to function at the moment...
+        'app_key': api_key
+    }
+
+    r = requests.post(endpoint, params=payload)
+
+    if r.status_code != 200:
+        raise RuntimeError("PhishTank HTTP Request failed: code " + r.status_code)
+
+    response_str = r.content.decode('UTF-8').strip()
+    response_tree = xml.fromstring(response_str)
+
+    in_db = response_tree.find('./results/url0/in_database').text
+
+    if in_db is None:
+        raise RuntimeError("PhishTank check failed, invalid data received from endpoint")
+
+    if in_db == 'true':  # If included in the PhishTank database and verified to be phishing
+        return -1
+    else:
+        return 1
 

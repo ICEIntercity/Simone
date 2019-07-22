@@ -1,6 +1,7 @@
 from flask import Flask
-from link import link as LinkAI
+from link import NeuralNetwork as NN
 from link import analysis
+from link import link
 import numpy as np
 import sys
 import logging
@@ -24,26 +25,24 @@ ch.setFormatter(formatter)
 log.addHandler(fh)
 log.addHandler(ch)
 
+
 @app.route('/')
 def hello_world():
     np.set_printoptions(threshold=np.inf)
-    link = LinkAI.Link()
-
-
-    test_ip = analysis.detect_ip("http://192.168.1.1/something.php")
-    test_redirect = analysis.check_short_url('https://tinyurl.com/y6ypdyg')
-
+    nn = NN.NeuralNetwork()
 
     # TODO: Git Gud w/ python
     # TODO: learn 2 unit test (you n00b)
-    test_data = np.array(([[1 , -1, 1, 1, 1, -1, -1, 0, 1, 1, -1, 1, 1, 0, -1, -1, -1, -1, 0, 1, 1, 1, 1, -1, 1, 1, -1, 1, 1, -1],
-                           [1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1, -1, -1, 0, -1, -1, -1, -1, 0, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, -1]]))
+    test_data = link.build_input("http://132.148.30.34/cifrao.html")
+    google_data = link.build_input("https://www.google.com/")
 
-    print(test_data.shape)
+    test_result = nn.predict(test_data)
+    google_result = nn.predict(google_data)
 
-    test_result = link.model.predict(x=test_data, batch_size=None, verbose=1)
     print(test_result)
-    return "It works!"
+    print(google_result)
+
+    return str(test_result[0][0])
 
 
 if __name__ == '__main__':

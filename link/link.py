@@ -1,104 +1,56 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-import tensorflow as tf
+from urllib.parse import urlparse
 import numpy as np
-from tensorflow import keras
-import pandas as pd
-import os.path as path
-import traceback
+import link.analysis as analysis
 import logging
-import config
-import definitions
+
+def validate_url(link: str) -> bool:
+    parsed = urlparse(link)
+
+    if not parsed.netloc or not parsed.scheme:
+        return False
+    else:
+        return True
 
 
-class Link:
-    log = None
-    model = None
+def build_input(link: str):
+    log = logging.getLogger("simone_core")
 
-    def __init__(self, force_rebuild=False):
-        self.log = logging.getLogger('simone_core')
-        self.log.info('Instantiating Link NN...')
-        self.log.info('TensorFlow version: ' + tf.version.VERSION + ' (Keras ' + tf.keras.__version__ + ')a ')
+    if not validate_url(link):
+        raise RuntimeError("Failed to build dataset for processing: URL Invalid")
 
-        if path.isfile(path.join(definitions.ROOT_DIR, config.link['modelFile'])) and not force_rebuild:
-            self.log.debug('Found persistence file, loading model...')
-            self.__load()
-        else:
-            self.log.debug('No persistence file found, creating a new model...')
-            self.__create()
+    result = np.zeros(shape=(1, 21))
 
-    def __load(self):
-        new_model = keras.Sequential()
-        new_model.add(keras.layers.Input(shape=(30,)))
-        new_model.add(keras.layers.Dense(100, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dense(70, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dense(45, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(20, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(10, activation=keras.activations.sigmoid))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(1, activation=keras.activations.sigmoid))
+    try:
 
-        # new_model.summary()
+        domain_str = analysis.check_domain_str(link)
+        whois = analysis.check_whois(link)
+        html = analysis.check_html(link)
 
-        self.model = new_model
-        self.model.compile(optimizer=tf.train.AdamOptimizer(0.002),
-                           loss=keras.losses.binary_crossentropy,
-                           metrics=['mae', 'accuracy'])
+        # Please work correctly...
+        result[0][0] = analysis.detect_ip(link)
+        result[0][1] = analysis.check_url_length(link)
+        result[0][2] = analysis.check_short_url(link)
+        result[0][3] = domain_str["at_result"]
+        result[0][4] = analysis.check_http_www(link)
+        result[0][5] = domain_str["dash_result"]
+        result[0][6] = domain_str["dot_result"]
+        result[0][7] = analysis.check_ssl(link)
+        result[0][8] = whois["domain_expiry"]
+        result[0][9] = html["favicon"]
+        result[0][10] = domain_str["http_result"]
+        result[0][11] = html["ext_res"]
+        result[0][12] = html["ext_anchor"]
+        result[0][13] = html["ext_script"]
+        result[0][14] = whois["public_identity"]
+        result[0][15] = analysis.check_redirects(link)
+        result[0][16] = html["status_change"]
+        result[0][17] = html["iframe"]
+        result[0][18] = whois["domain_age"]
+        result[0][19] = analysis.check_page_rank(link)
+        result[0][20] = analysis.check_phishtank_reputation(link)
 
-        try:
-            self.model = tf.keras.models.load_model(path.join(definitions.ROOT_DIR, config.link['modelFile']))
-            self.log.debug('Successfully loaded model.')
-        except Exception:
-            self.log.error('Exception while loading model file. Operation could not be completed: '
-                           + traceback.format_exc())
+    except Exception:
 
-    def __create(self):
-        new_model = keras.Sequential()
-        new_model.add(keras.layers.Input(shape=(30,)))
-        new_model.add(keras.layers.Dense(100, activation=keras.activations.relu, input_shape=(30,)))
-        new_model.add(keras.layers.Dense(70, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dense(45, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(20, activation=keras.activations.relu))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(10, activation=keras.activations.sigmoid))
-        new_model.add(keras.layers.Dropout(0.2))
-        new_model.add(keras.layers.Dense(1, activation=keras.activations.sigmoid))
+        raise RuntimeError("Failed to build dataset. See output above for details.")
 
-        # Debug output - uncomment for extra information
-        # new_model.summary()
-        self.log.debug(new_model.summary())
-
-        self.model = new_model
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(),
-                           loss=keras.losses.binary_crossentropy,
-                           metrics=['mae', 'accuracy'])
-        self.train(config.link['dataFile'])
-        self.__persist()
-
-    def __persist(self):
-        try:
-            self.model.save(path.join(definitions.ROOT_DIR, config.link['modelFile']))
-            self.log.debug('Model saved successfully: ' + config.link['modelFile'])
-        except Exception:
-            self.log.error('CRITICAL: Could not export model (File: ' + config.link['modelFile'] + ')')
-
-    def train(self, training_file):
-
-        training_data = pd.read_csv(training_file, sep=',', error_bad_lines=False)
-
-        print(training_data)
-
-        train_x = training_data.drop(columns=['Result', 'id'])  # Training input
-        train_y = training_data[['Result']]  # Training output
-        train_y = train_y.replace(-1, 0)
-
-        self.model.fit(x=train_x, y=train_y, epochs=100, batch_size=32, verbose=2, validation_split=0.1)
-
-    def predict(self, input_data):
-
-        result = self.model.predict(input_data)
-        return result
-
+    return result
