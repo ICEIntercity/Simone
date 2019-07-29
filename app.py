@@ -1,7 +1,11 @@
 from flask import Flask
+from flask import request
 from link import NeuralNetwork as NN
 from link import analysis
+import urllib.parse as urlparse
 from link import link
+from link import virustotal
+from flask import jsonify
 import numpy as np
 import sys
 import logging
@@ -27,22 +31,40 @@ log.addHandler(ch)
 
 
 @app.route('/')
-def hello_world():
+def perform_analysis():
     np.set_printoptions(threshold=np.inf)
     nn = NN.NeuralNetwork()
 
-    # TODO: Git Gud w/ python
-    # TODO: learn 2 unit test (you n00b)
-    test_data = link.build_input("http://132.148.30.34/cifrao.html")
-    google_data = link.build_input("https://www.google.com/")
+    target_param = request.args.get('link')
 
-    test_result = nn.predict(test_data)
-    google_result = nn.predict(google_data)
+    if target_param is None:
+        return "'link' parameter must not be empty", 400
 
-    print(test_result)
-    print(google_result)
+    target = urlparse.unquote(target_param)
 
-    return str(test_result[0][0])
+    if link.validate_url(target):
+        data = link.build_input(target)
+    else:
+        return "incorrect parameter format or invalid URL specified.", 400
+
+    result = nn.classify(data)
+    vt = virustotal.lookup(target)
+
+    print(result)
+
+    if not vt:
+        return jsonify(
+            classification=result[0],
+            numeric=str(result[1])
+        )
+    else:
+        return jsonify(
+            classification=result[0],
+            numeric=str(result[1]),
+            vt_link=vt[0],
+            vt_positives=vt[1],
+            vt_total=vt[2]
+        )
 
 
 if __name__ == '__main__':

@@ -890,7 +890,7 @@ def check_whois(link: str) -> dict:
     results = {
         "record_exists": -1,
         "domain_age": -1,
-        "domain_expiry": 1,
+        "domain_expiry": -1,
         "public_identity": 0,
     }
 
@@ -902,7 +902,7 @@ def check_whois(link: str) -> dict:
     whois_info = whois.whois(host.hostname)
 
     if whois_info.domain_name is None:
-        log.error("WHOIS check failed: no WHOIS information for ", host)
+        log.error("WHOIS check failed: no WHOIS information for ", host.hostname)
         return results
     else:
         results.update(record_exists=1)
@@ -937,12 +937,12 @@ def check_whois(link: str) -> dict:
 def check_html(link: str) -> dict:
     log = logging.getLogger("simone_core")
     results = {
-        "favicon": 1,
-        "ext_res": 0,
-        "ext_anchor": 0,
-        "ext_script": 0,
+        "favicon": -1,
+        "ext_res": -1,
+        "ext_anchor": -1,
+        "ext_script": -1,
         "status_change": -1,
-        "iframe": 1,
+        "iframe": -1,
     }
     link_parsed = urlparse.urlparse(link)
     if link_parsed.hostname is None:
@@ -952,7 +952,7 @@ def check_html(link: str) -> dict:
     host = link_parsed.hostname  # Placeholder value
     try:
         req = urllib.request.Request(link, data=None, headers={
-            "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:68.0) Gecko/20100101 Firefox/68.0"
         })
         page = urllib.request.urlopen(req)
         host = urlparse.urlparse(page.url).hostname
@@ -960,8 +960,9 @@ def check_html(link: str) -> dict:
     except urllib.error.HTTPError as e:  # Exotic HTTP errors, Hackers can be sneaky...
         page = e.read().decode()
 
-    except urllib.error.URLError:
-        log.warning("Failed to open site.")
+    except urllib.error.URLError as e:
+        log.warning("Failed to open site: " + str(e.reason))
+        return results
 
     soup = BeautifulSoup(page, features="html.parser")
     icon = soup.find("link", rel="shortcut icon")
@@ -971,8 +972,8 @@ def check_html(link: str) -> dict:
         icon_host = urlparse.urlparse(icon_link).hostname
 
         # if favicon is hosted on the same server
-        if (icon_host is None or icon_link.find("data:") != -1) and icon_host != host:
-            results.update(favicon=-1)
+        if (icon_host is not None and icon_link.find("data:") == -1) and icon_host == host:
+            results.update(favicon=1)
 
     resource_href = {host: 0, "data": 0}  # Initializing the value for locally-hosted resources without url
     anchor_href = {host: 0, "data": 0}  # Ditto, but limited to anchors and links ("<a>" tag)
@@ -1087,24 +1088,24 @@ def check_html(link: str) -> dict:
     if ext_request_percentage < 0.25:
         results.update(ext_res=1)
     else:
-        if ext_request_percentage > 0.6:
-            results.update(ext_res=-1)
+        if ext_request_percentage < 0.6:
+            results.update(ext_res=0)
 
     if ext_anchor_percentage < 0.31:
         results.update(ext_anchor=1)
     else:
-        if ext_anchor_percentage > 0.60:
-            results.update(ext_anchor=-1)
+        if ext_anchor_percentage < 0.60:
+            results.update(ext_anchor=0)
 
     if ext_script_percentage < 0.17:
         results.update(ext_script=1)
     else:
-        if ext_script_percentage > 0.80:
-            results.update(ext_script=-1)
+        if ext_script_percentage < 0.80:
+            results.update(ext_script=0)
 
     iframe = soup.find('iframe')
-    if iframe is not None:
-        results.update(iframe=-1)
+    if iframe is None:
+        results.update(iframe=1)
 
     # print(ext_script_percentage)
     # print(ext_request_percentage)
@@ -1133,7 +1134,12 @@ def check_redirects(link: str) -> float:
     redirect_count = 0
 
     for i in range(0, 4):
-        r = requests.head(link)
+        try:
+            r = requests.head(link)
+        except Exception as e:
+            log.warning("Redirect count failed: " + str(e))
+            return -1
+
         if 300 < r.status_code < 400:
             loc = r.headers['location']
             plink = urlparse.urlparse(loc)

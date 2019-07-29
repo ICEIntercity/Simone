@@ -3,6 +3,7 @@ import numpy as np
 import link.analysis as analysis
 import logging
 
+
 def validate_url(link: str) -> bool:
     parsed = urlparse(link)
 
@@ -49,8 +50,9 @@ def build_input(link: str):
         result[0][19] = analysis.check_page_rank(link)
         result[0][20] = analysis.check_phishtank_reputation(link)
 
-    except Exception:
+    except Exception as e:
 
+        log.error(str(e))
         raise RuntimeError("Failed to build dataset. See output above for details.")
 
     return result

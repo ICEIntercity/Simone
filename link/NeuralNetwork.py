@@ -9,7 +9,7 @@ import traceback
 import logging
 import config
 import definitions
-
+import enum
 
 class NeuralNetwork:
     log = None
@@ -97,7 +97,14 @@ class NeuralNetwork:
 
         self.model.fit(x=train_x, y=train_y, epochs=100, batch_size=32, verbose=2, validation_split=0.1)
 
-    def predict(self, input_data):
-        result = self.model.predict(x=input_data, batch_size=None, verbose=1)
-        return result
+    def classify(self, input_data) -> tuple:
+        num_result = self.model.predict(x=input_data, batch_size=None, verbose=1)
+
+        if num_result < 0.3:
+            return "Phishing", num_result[0][0]
+        else:
+            if num_result > 0.7:
+                return "Clean", num_result[0][0]
+            else:
+                return "Unknown", num_result[0][0]
 
