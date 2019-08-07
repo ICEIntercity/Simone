@@ -30,7 +30,7 @@ log.addHandler(fh)
 log.addHandler(ch)
 
 
-@app.route('/')
+@app.route('/', methods=['GET', 'OPTIONS'])
 def perform_analysis():
     np.set_printoptions(threshold=np.inf)
     nn = NN.NeuralNetwork()
@@ -52,19 +52,24 @@ def perform_analysis():
 
     print(result)
 
+    response = None
+
     if not vt:
-        return jsonify(
+        response = jsonify(
             classification=result[0],
             numeric=str(result[1])
         )
     else:
-        return jsonify(
+        response = jsonify(
             classification=result[0],
             numeric=str(result[1]),
             vt_link=vt[0],
             vt_positives=vt[1],
             vt_total=vt[2]
         )
+
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 
 if __name__ == '__main__':

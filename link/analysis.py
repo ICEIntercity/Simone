@@ -898,8 +898,11 @@ def check_whois(link: str) -> dict:
 
     if host.hostname is None:
         raise RuntimeError("WHOIS check failed, invalid URL")
-
-    whois_info = whois.whois(host.hostname)
+    try:
+        whois_info = whois.whois(host.hostname)
+    except Exception as e:
+        log.error("Error while performing WHOIS check:" + str(e))
+        return results
 
     if whois_info.domain_name is None:
         log.error("WHOIS check failed: no WHOIS information for ", host.hostname)
